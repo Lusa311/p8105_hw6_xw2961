@@ -2,4 +2,103 @@
 title: "p8105_hw6_xw2961"
 output: github_document
 ---
+```{r setup, include=FALSE}
+library(tidyverse)
+library(modelr)
+library(mgcv)
+set.seed(1)
+```
+# Problem 2
+
+**Step 1: Import and load dataset**
+
+```{r}
+url = "https://raw.githubusercontent.com/washingtonpost/data-homicides/master/homicide-data.csv"
+
+homicide_data = read_csv(url)
+```
+**Step 2: Data Preparation**
+
+Create and define `city_state` & `solved_homicide, filter `victim_race`, and verify `victim_age`:
+```{r}
+filtered_data <- homicide_data |> 
+  mutate(
+    city_state = paste(city, state, sep = ", "),
+    victim_age = as.numeric(victim_age),
+    solved_homicide = ifelse (disposition == "Closed by arrest", 1, 0)
+  ) |> 
+  filter(
+    victim_race %in% c("White", "Black"),
+    !city_state %in% c("Dallas, TX", "Phoenix, AZ", "Kansas City, MO", "Tulsa, AL")
+  )
+```
+* Solved is defined as those **with arrests**
+
+**Step 3: Regression - Resolved vs. age, sex, and race [Baltimore, MD]**
+```{r}
+baltimore <- filtered_data |> 
+  filter(city_state == "Baltimore, MD")
+
+baltimore_model <- glm(
+  solved_homicide ~ victim_age + victim_sex + victim_race,
+  data = baltimore,
+  family = binomial
+)
+```
+
+Results: Odd Ratio & CI
+```{r}
+baltimore_results <- 
+  broom::tidy(baltimore_model,conf.int = TRUE, conf.level = 0.95) |> 
+  mutate(
+    OR = exp(estimate),
+    lower_CI = exp(estimate - 1.96 * std.error),
+    upper_CI = exp(estimate + 1.96 * std.error)
+  ) |> 
+  filter(term == "victim_sexMale") |> 
+  select(OR, lower_CI, upper_CI)
+
+baltimore_results |> knitr::kable(digits = 3)
+  
+```
+
+**Step 4: Regression - Resolved vs. age, sex, and race [Each City]**
+```{r}
+cities_results <- 
+  filtered_data |> 
+  group_by(city_state) |> 
+  nest() |> 
+  mutate(
+    model = map(data, ~ glm(solved_homicide ~ victim_age + victim_sex + victim_race, 
+                            data = ., family = binomial)),
+    tidy_model = map(model, ~broom::tidy(.x, conf.int = TRUE, conf.level = 0.95))
+  ) |> 
+  unnest(tidy_model) |> 
+  mutate(
+    OR = exp(estimate),
+    lower_CI = exp(estimate - 1.96 * std.error),
+    upper_CI = exp(estimate + 1.96 * std.error)
+  ) |> 
+  filter(term == "victim_sexMale") |> 
+  select(city_state, OR, lower_CI, upper_CI)
+
+cities_results |> knitr::kable(digits = 3)
+```
+
+**Step 5: Plot ORs & CIs for each City**
+
+```{r}
+cities_results |>
+  ggplot(aes(x = reorder(city_state,desc(OR)), y = OR)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = lower_CI, ymax = upper_CI), width = 0.25, color = "darkgray") +
+  labs(
+    x = "City",
+    y = "Odds Ratio"
+  ) +
+  coord_flip() +
+  theme_minimal()
+```
+* Of the cities, New York, NY has the lowest OR estimate, whilst Albuquerque, NM has the highest estimate.
+* 22 of the cities have CIs that do not contian OR = 1. 
 
