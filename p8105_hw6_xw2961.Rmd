@@ -193,5 +193,4 @@ cv_results |>
   ggplot(aes(x = model, y = rmse)) +
   geom_violin()
 ```
-
 `birthweight`, the model proposed, compared to intersectional and main effects models, seems to have the lower central tendencies in RMSE meaning that it seemingly fits the data better than `inter` and `main`. The intersectional proposal of `birthweight` including biological and sociological factors that contribute to birthweight may contribute to its better fit.
