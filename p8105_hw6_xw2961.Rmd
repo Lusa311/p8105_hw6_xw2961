@@ -102,3 +102,96 @@ cities_results |>
 * Of the cities, New York, NY has the lowest OR estimate, whilst Albuquerque, NM has the highest estimate.
 * 22 of the cities have CIs that do not contian OR = 1. 
 
+
+# Problem 3
+
+**Step 1: Import and load dataset**
+
+```{r}
+birthweight_data <- 
+  read_csv("birthweight.csv") |>
+  janitor::clean_names() |>
+  mutate(
+    babysex = factor(babysex, levels = c(1, 2), 
+                     labels = c("Male", "Female")),
+    malform = factor(malform, levels = c(0, 1), 
+                     labels = c("Absent", "Present")),
+    frace = factor(frace, levels = c(1, 2, 3, 4, 8, 9), 
+                   labels = c("White", "Black", "Asian", "Puerto Rican", "Other", "Unknown")),
+    mrace = factor(mrace, levels = c(1, 2, 3, 4, 8), 
+                   labels = c("White", "Black", "Asian", "Puerto Rican", "Other"))
+  )
+
+summary(birthweight_data)
+```
+
+** Step 2: Regression Model
+
+* Variables selected: bhead, blength, delwt, fincome, frace, gaweeks, malform, menarche, mheight, momage, mrace, pnumlbw, ppbmi, wtgain, smoken
+
+* Measures of Child Growth: bhead, blength, gaweeks, malform
+* Maternal Health: delwt, menarche, mheight, momage, wtgain, ppbmi, pnumlbw, smoken
+* SES factors: fincome, frace, mrace
+
+* *All variables are separated into subsets of which hypothesize the underlying structure of child birthweight. Measures of child growth show the health and size of the child which may predict birthweight well. Measures of maternal health indirectly show the health and size of child aswhich may predict birthweight. SES factors may potentially play a role in predicting birthweight through indirect influence on the baby and child's growth and/or directly on birthweight. *
+
+```{r}
+birthweight_model <-
+  lm(
+  bwt ~ bhead + blength + delwt + fincome + frace + gaweeks + malform+ menarche + mheight + momage + mrace + pnumlbw + ppbmi +wtgain + smoken, data = birthweight_data
+  )
+```
+
+**Step 2: Plot residuals vs. fitted**
+```{r}
+birthweight_plot <-
+  birthweight_data |> 
+  modelr::add_predictions(birthweight_model) |>
+  modelr::add_residuals(birthweight_model)
+  
+birthweight_plot |>
+  ggplot(aes(x = pred, y = resid)) +
+  geom_point(size = 0.5) +
+  labs(
+    x = "Fitted Values",
+    y = "Residuals"
+  ) +
+  theme_minimal()
+```
+* For the comparison, upon deeper inspection: malform, pnumlbw, and smoken were removed due to zero variance and/or extreme values.
+
+**Step 3: Compare Model**
+
+```{r}
+cv_results <-
+  crossv_mc(birthweight_data, 100) |>
+  mutate(
+    train = map(train, as_tibble),
+    test = map(test, as_tibble),
+    birthweight_model = map(train, ~ lm(bwt ~ bhead + blength + delwt + fincome + frace + gaweeks + menarche + mheight + momage + mrace + ppbmi + wtgain, data = .)),
+    model_main= map(train, ~ lm(bwt ~ blength + gaweeks, data = .)),
+    model_inter = map(train, ~ lm(bwt ~ bhead * blength * babysex, data = .))
+  ) |>
+  mutate(
+    rmse_birthweight = map2_dbl(birthweight_model, test,~ rmse(.x, .y)),
+    rmse_main = map2_dbl(model_main, test, ~ rmse(.x, .y)),
+    rmse_inter = map2_dbl(model_inter, test, ~ rmse(.x, .y))
+  )
+```
+
+**Step 4: Plot Models**
+
+```{r}
+cv_results |>
+  select(starts_with("rmse")) |>
+  pivot_longer(
+    everything(),
+    names_to = "model",
+    values_to = "rmse",
+    names_prefix = "rmse_"
+  ) |>
+  ggplot(aes(x = model, y = rmse)) +
+  geom_violin()
+```
+
+`birthweight`, the model proposed, compared to intersectional and main effects models, seems to have the lower central tendencies in RMSE meaning that it seemingly fits the data better than `inter` and `main`. The intersectional proposal of `birthweight` including biological and sociological factors that contribute to birthweight may contribute to its better fit.
